@@ -63,6 +63,14 @@ node cloudapp-dl.js --list path/to/urls.txt --prefix download --out path/to/outp
 
 This will save the videos with the specified prefix "download" and an incremented number in the given output directory. download-1.mp4 download-2.mp4
 
+### Save video with original title
+
+```
+node cloudapp-dl.js --list path/to/urls.txt --defaultTitle true --out path/to/output
+```
+
+this will save the video using the original title from the page. if you use this WITH --prefix the prefix option will overide. use one or the other not both
+
 ### Avoid rate limiting
 
 To prevent getting firewalled or rate-limited, a timeout can be set between downloads using the `--timeout` option:

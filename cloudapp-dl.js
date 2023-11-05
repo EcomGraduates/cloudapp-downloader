@@ -28,6 +28,12 @@ const argv = yargs(hideBin(process.argv))
     type: 'string',
     description: 'Path to output the file to or directory to output files when using --list'
   })
+  .option('defaultTitle', {
+    alias: 'd',
+    type: 'boolean',
+    default: false,
+    description: 'Use the page title as the default video title if available'
+  })
   .option('timeout', {
     alias: 't',
     type: 'number',
@@ -50,14 +56,14 @@ const argv = yargs(hideBin(process.argv))
   .argv;
 
 
-const fetchDownloadUrl = async (pageUrl) => {
+const fetchDownloadUrl = async (pageUrl, useDefaultTitle) => {
   try {
     const response = await axios.get(pageUrl);
     const pageData = response.data;
 
     const $ = cheerio.load(pageData);
     const twitterImageValue = $('meta[name="twitter:image"]').attr('value');
-
+    const videoTitle = $('meta[property="og:title"]').attr('content');
     const firstSplit = twitterImageValue.split('.gif/');
     if (firstSplit.length < 2) {
       throw new Error('Video not found');
@@ -68,13 +74,16 @@ const fetchDownloadUrl = async (pageUrl) => {
       throw new Error('Video not found');
     }
 
-    const mp4Url = secondSplit[0];
-    return `https://${mp4Url}`;
+    const mp4Url = `https://${secondSplit[0]}`;
+    if (useDefaultTitle && videoTitle) {
+      return { title: videoTitle, mp4Url };
+    } else {
+      return { mp4Url };
+    }
   } catch (error) {
     throw error;
   }
 };
-
 
 const downloadVideo = (url, filename) => {
   console.log(`Downloading video from ${url}`);
@@ -98,19 +107,20 @@ const downloadFromList = async () => {
   const fileContent = fs.readFileSync(filePath, 'utf8');
   const urls = fileContent.split(/\r?\n/);
   const outputDirectory = argv.out || '.';
+  const useDefaultTitle = argv.defaultTitle;
 
   for (let i = 0; i < urls.length; i++) {
     if (urls[i].trim()) {
       const id = extractId(urls[i]);
-      const url = await fetchDownloadUrl(urls[i]);
+      const urlInfo = await fetchDownloadUrl(urls[i], useDefaultTitle);
       let filename;
       if (argv.prefix) {
         filename = path.join(outputDirectory, `${argv.prefix}-${i + 1}.mp4`);
       } else {
-        filename = path.join(outputDirectory, `${id}.mp4`);
+        filename = path.join(outputDirectory, useDefaultTitle && urlInfo.title ? `${urlInfo.title}.mp4` : `${id}.mp4`);
       }
-      console.log(`Downloading video ${id} and saving to ${filename}`);
-      downloadVideo(url, filename);
+      console.log(`Downloading video ${useDefaultTitle && urlInfo.title ? urlInfo.title : id} and saving to ${filename}`);
+      downloadVideo(urlInfo.mp4Url, filename);
       if (argv.timeout) {
         console.log(`Waiting for ${argv.timeout} milliseconds before the next download...`);
         await delay(argv.timeout);
@@ -121,10 +131,10 @@ const downloadFromList = async () => {
 
 const downloadSingleFile = async () => {
   const id = extractId(argv.url);
-  const url = await fetchDownloadUrl(argv.url);
-  const filename = argv.out || `${id}.mp4`;
-  console.log(`Downloading video ${id} and saving to ${filename}`);
-  downloadVideo(url, filename);
+  const urlInfo = await fetchDownloadUrl(argv.url, argv.defaultTitle);
+  const filename = argv.out || (argv.defaultTitle && urlInfo.title ? `${urlInfo.title}.mp4` : `${id}.mp4`);
+  console.log(`Downloading video ${argv.defaultTitle && urlInfo.title ? urlInfo.title : id} and saving to ${filename}`);
+  downloadVideo(urlInfo.mp4Url, filename);
 };
 
 const main = async () => {
@@ -135,7 +145,7 @@ const main = async () => {
   } else if (argv.url) {
     await downloadSingleFile().catch(error => {
       console.error(error.message);
-    })
+    });
   }
 };
 
