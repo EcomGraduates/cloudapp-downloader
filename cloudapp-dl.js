@@ -91,16 +91,24 @@ const fetchDownloadUrl = async (pageUrl, useDefaultTitle) => {
 };
 
 const downloadVideo = (url, filename) => {
-  // Ensure the directory exists before downloading the video
-  const directory = path.dirname(filename);
-  ensureDirectoryExists(directory);
-
-  console.log(`Downloading video from ${url}`);
-  const file = fs.createWriteStream(filename);
-  https.get(url, function (response) {
-    response.pipe(file);
+  return new Promise((resolve, reject) => {
+    const directory = path.dirname(filename);
+    ensureDirectoryExists(directory);
+    const file = fs.createWriteStream(filename);
+    
+    https.get(url, function (response) {
+      response.pipe(file);
+      file.on('finish', () => {
+        resolve(true);
+      });
+      file.on('error', (err) => {
+        fs.unlinkSync(filename);
+        reject(err);
+      });
+    });
   });
-};;
+};
+
 
 const extractId = (url) => {
   url = url.split('?')[0];
@@ -117,26 +125,47 @@ const downloadFromList = async () => {
   const urls = fileContent.split(/\r?\n/);
   const outputDirectory = argv.out || '.';
   const useDefaultTitle = argv.defaultTitle;
+  let completedDownloads = 0;
+  let totalDownloads = urls.length;
 
   for (let i = 0; i < urls.length; i++) {
     if (urls[i].trim()) {
       const id = extractId(urls[i]);
-      const urlInfo = await fetchDownloadUrl(urls[i], useDefaultTitle);
+      const urlInfo = await fetchDownloadUrl(urls[i], useDefaultTitle).catch(e => {
+        console.error(`Failed to fetch URL for video ${id}: ${e.message}`);
+        return null;
+      });
+
+      if (!urlInfo) {
+        continue;
+      }
+
       let filename;
       if (argv.prefix) {
         filename = path.join(outputDirectory, `${argv.prefix}-${i + 1}.mp4`);
       } else {
         filename = path.join(outputDirectory, useDefaultTitle && urlInfo.title ? `${urlInfo.title}.mp4` : `${id}.mp4`);
       }
-      console.log(`Downloading video ${useDefaultTitle && urlInfo.title ? urlInfo.title : id} and saving to ${filename}`);
-      downloadVideo(urlInfo.mp4Url, filename);
+
+      try {
+        await downloadVideo(urlInfo.mp4Url, filename);
+        console.log(`Successfully downloaded ${filename}`);
+      } catch (error) {
+        console.error(`Error downloading ${filename}: ${error}`);
+      }
+
+      completedDownloads++;
+      let progress = (completedDownloads / totalDownloads * 100).toFixed(2);
+      console.clear();
+      console.log(`Progress: ${progress}% - Downloaded ${completedDownloads} of ${totalDownloads} files`);
+
       if (argv.timeout) {
-        console.log(`Waiting for ${argv.timeout} milliseconds before the next download...`);
         await delay(argv.timeout);
       }
     }
   }
 };
+
 
 const downloadSingleFile = async () => {
   const id = extractId(argv.url);
