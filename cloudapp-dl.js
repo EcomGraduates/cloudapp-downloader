@@ -55,6 +55,11 @@ const argv = yargs(hideBin(process.argv))
   .alias('help', 'h')
   .argv;
 
+const ensureDirectoryExists = (directoryPath) => {
+  if (!fs.existsSync(directoryPath)) {
+    fs.mkdirSync(directoryPath, { recursive: true });
+  }
+};
 
 const fetchDownloadUrl = async (pageUrl, useDefaultTitle) => {
   try {
@@ -86,12 +91,16 @@ const fetchDownloadUrl = async (pageUrl, useDefaultTitle) => {
 };
 
 const downloadVideo = (url, filename) => {
+  // Ensure the directory exists before downloading the video
+  const directory = path.dirname(filename);
+  ensureDirectoryExists(directory);
+
   console.log(`Downloading video from ${url}`);
   const file = fs.createWriteStream(filename);
-  https.get(url, function(response) {
+  https.get(url, function (response) {
     response.pipe(file);
   });
-};
+};;
 
 const extractId = (url) => {
   url = url.split('?')[0];
